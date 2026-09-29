@@ -51,7 +51,7 @@ Design a search ranking system (like Google Shopping, Amazon Search, or LinkedIn
 | Metric | Value |
 |---|---|
 | Hot inverted index shards (in-memory) | ~500 GB |
-| Dense vector index (ANN, in-memory) | ~5 TB (distributed) |
+| Dense vector index (ANN, in-memory) | ~2.5 TB (PQ-compressed ~4×, sharded across nodes; 10 TB raw on disk) |
 | Query result cache (Redis) | ~50 GB |
 | User feature cache | ~100 GB |
 

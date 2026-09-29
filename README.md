@@ -41,12 +41,9 @@ LLM-native architectures — context windows, cost, hallucination, eval.
 
 ---
 
-## Case Template
+## How to Use This Repo
 
-Each case follows this structure:
-- **Problem** — what to design, scale requirements
-- **Requirements** — functional + non-functional
-- **Design** — components, data flow, key decisions
-- **Tradeoffs** — what was sacrificed, alternatives considered
-- **Patterns used** — links back to `/patterns/`
-- **Interview tips** — what interviewers look for
+- New to system design? Read [HOW_TO_SOLVE.md](./HOW_TO_SOLVE.md), then the guide for your domain:
+  [classical](./classical/HOW_TO_SOLVE.md) · [ML](./ml-systems/HOW_TO_SOLVE.md) · [GenAI](./genai-systems/HOW_TO_SOLVE.md)
+- Writing a case: copy [TEMPLATE.md](./TEMPLATE.md).
+- Writing a pattern: copy [PATTERN_TEMPLATE.md](./PATTERN_TEMPLATE.md).

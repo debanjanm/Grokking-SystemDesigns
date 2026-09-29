@@ -101,7 +101,7 @@ Know these cold. Use correct names.
 | Retriever | ANN search → top-K candidate chunks |
 | Reranker | Cross-encoder re-scores candidates → higher precision (Cohere, BGE) |
 | Context Assembler | Pack retrieved chunks into LLM context window |
-| LLM | Generation / reasoning model (Claude, GPT-4o, Gemini) |
+| LLM | Generation / reasoning model (Claude, GPT, Gemini) |
 | Tool | Function the agent can call (search, code exec, API) |
 | Memory Store | Persist agent state across steps (Redis short-term, Vector DB long-term) |
 | Prompt Cache | Reuse KV states for repeated prompt prefixes (Anthropic, OpenAI) |
@@ -223,7 +223,7 @@ Cost = (input_tokens × input_price + output_tokens × output_price) × volume
 Reduction strategies (in order of impact):
   1. Semantic cache (skip LLM entirely on cache hit — 30%+ cost reduction)
   2. Prompt caching (provider-level KV cache for repeated prefix — 80–90% savings on prefix)
-  3. Smaller model for simple tasks (GPT-4o-mini vs GPT-4o; Haiku vs Sonnet)
+  3. Smaller model for simple tasks (small vs large tier, e.g. Haiku vs Sonnet)
   4. Reduce context size (fewer chunks, shorter system prompt)
   5. Batch non-urgent requests (OpenAI batch API: 50% discount, 24hr SLA)
   6. Output length control (max_tokens, explicit "be concise" instruction)

@@ -210,7 +210,7 @@ if cache_value == "__NOT_FOUND__":
 - [URL Shortener](../../cases/url-shortener/) — Redis cache for short_code → long_url; 10:1 read:write ratio
 - [Twitter Feed](../../cases/twitter-feed/) — timeline cache, tweet cache, user profile cache
 - [Uber](../../cases/uber/) — driver location cache, surge pricing cache, ETA cache
-- [ML Model Serving](../../../ml-systems/patterns/model-serving/) — prediction cache for repeated inputs
+- [Recommendation Engine](../../../ml-systems/cases/recommendation-engine/) — pre-computed candidate cache + Redis feature cache
 - [LLM Gateway](../../../genai-systems/cases/llm-gateway/) — semantic response cache (vector similarity)
 - [Search Ranking](../../../ml-systems/cases/search-ranking/) — popular query result cache (Redis, TTL 5min)
 

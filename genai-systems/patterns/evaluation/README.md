@@ -246,7 +246,7 @@ LLM judges can be biased: verbose answers rated higher (verbosity bias),
 own outputs rated higher (self-preference bias), first option preferred.
 
 Mitigations:
-  1. Use stronger model as judge than model being judged (GPT-4o judges GPT-3.5)
+  1. Use stronger model as judge than model being judged (e.g. a larger model judges a smaller one)
   2. Randomize answer order when presenting to judge
   3. Calibrate judge scores against human ratings (compute correlation)
   4. Use multiple judge prompts; average scores

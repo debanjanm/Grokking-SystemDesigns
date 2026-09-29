@@ -70,7 +70,7 @@ CDN (cache redirect responses)
 Load Balancer
   ├── Write Service (POST /shorten)
   │       ↓
-  │   ID Generator (Snowflake)
+  │   ID Generator (range-leased counter)
   │       ↓
   │   DB Write (Cassandra) + Cache Warm
   │
@@ -90,7 +90,7 @@ Load Balancer
 |---|---|
 | Write Service | Validate URL, generate short code, persist, warm cache |
 | Redirect Service | Resolve short code → long URL via cache → DB; issue redirect |
-| ID Generator | Distributed unique ID generation (Snowflake) → Base62 encode |
+| ID Generator | Node leases a block of counter values from a coordinator, issues them locally, Base62-encodes |
 | Cache (Redis) | Short code → long URL; hot path, sub-millisecond lookup |
 | DB (Cassandra) | Persistent store; key-value access pattern; high read throughput |
 | CDN | Cache redirect responses for popular short URLs at edge |
@@ -101,7 +101,7 @@ Load Balancer
 **URL Creation:**
 1. Client POST `/shorten` with long URL
 2. Write service validates URL (format, blocklist check)
-3. ID generator produces unique integer → Base62 encode → 7-char short code
+3. ID generator takes next value from its leased counter range → scramble → Base62 encode → 7-char short code
 4. Write to Cassandra (short_code → record)
 5. Warm Redis cache
 6. Return short URL to client
@@ -115,7 +115,7 @@ Load Balancer
 
 ### Key Design Decisions
 - **302 over 301 redirect:** 301 is cached by browser permanently — no analytics, no way to update. 302 always hits server — enables click tracking, expiry enforcement, URL updates.
-- **Base62 encoding of Snowflake ID:** Avoids collision risk of MD5/hash. Snowflake gives globally unique monotonic ID; Base62 gives short, URL-safe string.
+- **Range-leased counter + Base62:** Avoids collision risk of MD5/hash. Each node leases a block of integers, so IDs are unique with no per-ID network call. A 64-bit Snowflake ID would need 11 Base62 chars, so it does not fit a 7-char code.
 - **Cassandra over SQL:** Access pattern is pure key-value (short_code lookup). Cassandra excels at high read throughput, horizontal scaling, no joins needed.
 - **CDN for top URLs:** Popular links (viral content) cause thundering herd on redirect service. CDN caches 302 responses at edge — eliminates server load for hot URLs.
 
@@ -160,16 +160,21 @@ Response: HTTP 204
 
 ### Component Deep-Dives
 
-#### ID Generator (Snowflake-based)
+#### ID Generator (range-leased counter)
 ```
-64-bit Snowflake ID:
-  [41 bits timestamp][10 bits machine_id][12 bits sequence]
+Coordinator (ZooKeeper / etcd / one DB row) hands out ranges:
+  node A leases [0, 1M), node B leases [1M, 2M), ...
+  node draws next value locally; re-leases when its range runs out
 
-→ Base62 encode (a-z, A-Z, 0-9)
-→ 7-character short code (62^7 = 3.5 trillion unique codes)
+value (< 62^7 = 3.5T) → scramble: (value × K) mod 62^7
+                      → Base62 encode (a-z, A-Z, 0-9)
+                      → 7-character short code
 ```
 
-Why not hash (MD5/SHA): collision risk at scale; requires collision detection retry loop. Snowflake is collision-free by construction.
+- **Capacity:** 100M URLs/day = 36.5B/yr, so 3.5T codes last ~96 years.
+- **Scramble:** K must be coprime with 62^7 (= 2^7 × 31^7), i.e. odd and not a multiple of 31, e.g. K = 2654435761. The map is a bijection, so still no collisions, but codes no longer reveal creation order.
+- **Why not hash (MD5/SHA):** collision risk at scale; needs a retry loop.
+- **Why not Snowflake:** 64-bit IDs encode to 11 Base62 chars. Fine if long codes are acceptable; otherwise use ranges.
 
 #### Cache Strategy (Redis)
 ```
@@ -177,6 +182,8 @@ Key:   short_code
 Value: { long_url, expires_at }
 TTL:   24 hours (refresh on access for active links)
 ```
+
+Sharding: Redis Cluster maps keys to 16384 hash slots (a consistent-hashing variant), so adding a node moves only some slots. See [Consistent Hashing](../../patterns/consistent-hashing/).
 
 On redirect:
 1. GET short_code from Redis
@@ -191,10 +198,10 @@ On redirect:
 - URL validation: must parse as valid HTTP/HTTPS URL
 - Blocklist check: scan long URL against known phishing/malware domains (Google Safe Browsing API)
 - Rate limiting: max 100 URL creations per IP per hour
-- Short code enumeration prevention: 7-char Base62 space is 3.5T — brute force infeasible; no sequential exposure (Snowflake IDs are not exposed directly)
+- Short code enumeration prevention: 7-char Base62 space is 3.5T, but raw counter values are sequential; the multiplicative scramble hides creation order so codes can't be walked
 
 ### Algorithms & Strategies
-- **ID generation:** Snowflake (distributed, monotonic, no coordination needed). Each write service node has unique `machine_id` (assigned at startup from ZooKeeper or env config).
+- **ID generation:** range-leased counter. Coordinator is contacted once per range, not per ID. A crashed node wastes its unused range (acceptable: 3.5T space).
 - **Caching strategy:** Cache-aside pattern. Redis TTL: 24hr with sliding expiry on access. Eviction: LRU (hot URLs stay, cold URLs evicted).
 - **Expiry enforcement:** expires_at stored in Cassandra and Redis value. Redirect service checks at read time — expired link returns 410 Gone. Background job cleans up expired rows weekly.
 - **Analytics:** Fire-and-forget Kafka publish on each redirect. Consumer aggregates into ClickHouse (OLAP). No sync dependency on analytics for redirect latency.
@@ -245,7 +252,7 @@ On redirect:
 | Decision | Chose | Sacrificed |
 |---|---|---|
 | 302 redirect | Analytics accuracy, expiry control | Browser-side caching (every click hits server) |
-| Base62 + Snowflake ID | Zero collision, no retry needed | Need distributed ID generator infrastructure |
+| Range-leased counter + Base62 | Zero collision, no retry, 7-char codes | Coordinator dependency (per lease, not per ID); gaps when a node dies |
 | Cassandra over MySQL | Horizontal scale, high read throughput | No ACID transactions (not needed for this use case) |
 | CDN for hot URLs | Edge-cached redirects (0ms server load) | 302 cached at CDN — analytics undercounted for viral links |
 | Async analytics (Kafka) | Zero impact on redirect latency | Analytics lag (minutes), not real-time |
@@ -258,7 +265,7 @@ On redirect:
 |---|---|---|
 | Redis down | OOM or node failure | Fail open to Cassandra; pre-warm Redis on recovery |
 | Cassandra node down | Hardware failure | Cassandra replication (RF=3); redirect degrades gracefully with remaining nodes |
-| ID generator down | Snowflake node crash | Multiple ID generator instances; fallback to secondary |
+| ID coordinator down | ZooKeeper/etcd outage | Nodes keep issuing from current lease; size leases to cover minutes of outage; run coordinator as a quorum |
 | Hot URL cache miss storm | Viral link, cache cold | CDN absorbs; probabilistic early expiry (cache refresh before TTL) |
 | Expired link redirect | expires_at not checked | Check expires_at in value, not just Redis TTL; return 410 Gone |
 
@@ -267,7 +274,7 @@ On redirect:
 ## Interview Tips
 
 ### What Interviewers Expect
-- ID generation strategy — must explain Snowflake vs hash and why Snowflake wins
+- ID generation strategy — explain hash (collisions) vs Snowflake (11 chars) vs range-leased counter (7 chars) and why the last wins
 - 301 vs 302 tradeoff — always ask this; 302 is correct answer for analytics
 - Cache hierarchy: CDN → Redis → Cassandra (three layers)
 - Cassandra choice: justify key-value access pattern

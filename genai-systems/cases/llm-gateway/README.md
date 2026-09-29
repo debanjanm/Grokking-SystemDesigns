@@ -53,15 +53,15 @@ Design a centralized gateway that routes LLM requests across multiple providers,
 ### Bandwidth Estimation
 | Metric | Value |
 |---|---|
-| Token throughput (input) | ~1B tokens/day |
-| Token throughput (output) | ~250M tokens/day |
+| Token throughput (input) | ~20B tokens/day (10M × 2,000) ≈ 230K tokens/sec avg |
+| Token throughput (output) | ~5B tokens/day (10M × 500) ≈ 58K tokens/sec avg |
 
 ### Cost Estimation
 | Metric | Value |
 |---|---|
-| Tokens/day | ~1.25B |
-| Expected cost/day (blended) | ~$5,000–$20,000 |
-| Cache hit target (30%) saves | ~$1,500–$6,000/day |
+| Tokens/day | ~25B |
+| Expected cost/day | ~$45K (small-model mix, ~$1/$5 per M in/out) to ~$135K (large-model mix, ~$3/$15) — illustrative list prices, verify |
+| Cache hit target (30%) saves | ~$13K–$40K/day |
 
 ---
 
@@ -169,7 +169,7 @@ rate_limit_counters (Redis):
 ```
 POST /v1/chat/completions          ← OpenAI-compatible interface
 Request:  {
-  "model": "claude-sonnet-4-6",   ← gateway model alias
+  "model": "claude-sonnet-5-5",   ← gateway model alias
   "messages": [...],
   "temperature": 0.7,
   "x-gateway-strategy": "cost"    ← optional routing hint
@@ -206,10 +206,10 @@ Do NOT cache:
 #### Provider Adapter
 ```python
 class ProviderAdapter:
-    def complete(self, messages, model, tools, max_tokens) -> Response
-    def stream(self, ...) -> AsyncIterator[Chunk]
-    def embed(self, texts) -> List[Vector]
-    def count_tokens(self, messages) -> int
+    def complete(self, messages, model, tools, max_tokens) -> Response: ...
+    def stream(self, messages, model, tools, max_tokens) -> AsyncIterator[Chunk]: ...
+    def embed(self, texts) -> List[Vector]: ...
+    def count_tokens(self, messages) -> int: ...
 ```
 
 Each provider (OpenAI, Anthropic, Gemini) implements this interface. Gateway never calls provider SDK directly — always through adapter.

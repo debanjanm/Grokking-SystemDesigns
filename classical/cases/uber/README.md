@@ -132,7 +132,7 @@ Driver App → Location Service → Kafka (location.updated)
 5. On complete: calculate fare (distance × rate × surge) → Payment Service charges rider
 
 ### Key Design Decisions
-- **Geohash for spatial indexing:** Divide map into geohash cells (6-char geohash ≈ 1.2km²). Store drivers in `geohash → [driver_ids]` index. Query: find drivers in rider's cell + 8 adjacent cells. O(1) lookup per cell.
+- **Geohash for spatial indexing:** Divide map into geohash cells (6-char geohash ≈ 1.2km × 0.6km). Store drivers in `geohash → [driver_ids]` index. Query: rider's cell plus rings of neighbours, expanding until enough drivers are found within the radius the rings are guaranteed to cover. O(1) lookup per cell.
 - **In-memory location index:** Driver locations change every 4s. DB writes at this rate (1.25M/sec) are too expensive. Keep in-memory (Redis sorted sets or custom quad-tree). Persist only completed trip routes.
 - **Separate matching from location:** Location service is high-write (1.25M/sec updates); matching is low-write (2K/sec requests). Separate services scale independently.
 - **WebSocket for real-time tracking:** Polling at 4s interval creates 250K requests/sec for 1M active trips. WebSocket maintains connection; server pushes updates — scales better, lower latency.
@@ -212,8 +212,8 @@ Response: { "status": "accepted", "pickup": { "lat": ..., "lng": ... } }
 #### Geospatial Index — Geohash + Redis
 ```
 Driver updates location:
-  geohash6 = geohash.encode(lat, lng, precision=6)   # ~1.2km² cell
-  geohash5 = geohash6[:5]                            # ~39km² parent
+  geohash6 = geohash.encode(lat, lng, precision=6)   # ~1.2km x 0.6km cell
+  geohash5 = geohash6[:5]                            # ~4.9km x 4.9km parent
 
   pipeline = redis.pipeline()
   # Add to new geohash cell
@@ -228,23 +228,30 @@ Driver updates location:
   pipeline.execute()
 
 Find nearby drivers for rider at (lat, lng):
-  rider_geohash = geohash.encode(lat, lng, 6)
-  neighbors = geohash.neighbors(rider_geohash)  # 8 adjacent cells
-  search_cells = [rider_geohash] + neighbors
+  # k rings of cells around the rider's cell cover at least k * MIN_CELL_KM
+  # in every direction (MIN_CELL_KM ~0.6, the short side of a geohash6 cell).
+  # A 3x3 block (k=1) only guarantees ~0.6km, NOT 5km.
+  rider_cell = geohash.encode(lat, lng, 6)
+  candidates = {}
+  for k in range(1, MAX_RINGS + 1):           # MAX_RINGS = ceil(5.0 / 0.6) = 9
+      cells = ring(rider_cell, k)             # only the new outer ring
+      pipe = redis.pipeline()
+      for cell in cells:
+          pipe.smembers(f"geo:{cell}")
+      for did in set().union(*pipe.execute()):
+          loc = redis.hgetall(f"loc:{did}")   # missing => TTL expired => offline
+          if loc and loc["status"] == "available":
+              candidates[did] = haversine(lat, lng, loc["lat"], loc["lng"])
 
-  driver_ids = set()
-  for cell in search_cells:
-      driver_ids.update(redis.smembers(f"geo:{cell}"))
+      covered_km = k * MIN_CELL_KM
+      trusted = [d for d, dist in candidates.items() if dist <= covered_km]
+      if len(trusted) >= 10 or covered_km >= 5.0:
+          break
 
-  # Filter: available only, get positions, compute actual distance
-  candidates = []
-  for did in driver_ids:
-      loc = redis.hgetall(f"loc:{did}")
-      if loc["status"] == "available":
-          dist = haversine(lat, lng, loc["lat"], loc["lng"])
-          if dist <= 5.0:   # km
-              candidates.append((did, dist))
+  return sorted(candidates.items(), key=lambda x: x[1])[:20]
 ```
+
+Dense downtown: 1-2 rings (9-25 cells) already yield 10+ drivers. Sparse suburb: expands to 9 rings (361 cells, pipelined). If ring queries get too heavy, switch to Redis `GEOSEARCH ... BYRADIUS` (one command, sorted set per city shard).
 
 #### Matching Algorithm
 ```
@@ -265,7 +272,7 @@ Select top-3 → offer to #1 (10s timeout)
 
 #### Surge Pricing Service
 ```
-Geohash5 cell (~39km² ≈ city neighborhood level)
+Geohash5 cell (~4.9km x 4.9km ≈ 24km², city neighborhood level)
 
 Every 60s per active cell:
   supply = count(available_drivers in cell)
@@ -301,7 +308,7 @@ Transitions (with optimistic locking):
 - **Surge cap:** max surge = 5× (regulatory in many markets); displayed prominently to rider
 
 ### Algorithms & Strategies
-- **Geohash precision 6:** ~1.2km² cells → right granularity for city-level driver density. Precision 5 (~39km²) for surge pricing (neighborhood level).
+- **Geohash precision 6:** ~1.2km x 0.6km cells → fine enough that dense cities return few drivers per cell. Precision 5 (~24km²) for surge pricing (neighborhood level).
 - **Haversine distance:** exact great-circle distance for ranking candidates within geohash search result. O(N) on candidate set (usually < 50 drivers).
 - **ETA computation:** call Google Maps / internal routing API for top-3 candidates after initial distance filter. Cache route ETAs per (driver_id, pickup) for 60s.
 - **Driver location TTL (30s):** driver considered offline if no update in 30s. Automatic cleanup without explicit offline signal.
@@ -357,7 +364,7 @@ Transitions (with optimistic locking):
 | Geohash over quad-tree | Simple, Redis-native, fast | Less precise boundary handling at cell edges |
 | WebSocket over polling | Efficient real-time tracking | Connection management complexity |
 | Separate location + matching services | Independent scaling | Cross-service calls on match path |
-| Surge at geohash5 (~39km²) | Neighborhood-level accuracy | Too coarse for small event-driven surges |
+| Surge at geohash5 (~24km²) | Neighborhood-level accuracy | Too coarse for small event-driven surges |
 | PostgreSQL for trip state | ACID for billing correctness | Can't scale writes horizontally beyond sharding |
 
 ---

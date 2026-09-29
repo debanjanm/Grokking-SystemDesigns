@@ -19,7 +19,7 @@ Design a system that generates and serves a personalized timeline of tweets for 
 - Availability: 99.99% — timeline must load even during spikes
 - Consistency: eventual — timeline lag up to 5s acceptable
 - Security & Privacy: private accounts; blocked users cannot see tweets; DMs encrypted
-- Scalability: 300M DAU, 500M tweets/day, 150M timeline requests/day
+- Scalability: 300M DAU, 500M tweets/day, ~6B timeline loads/day
 
 ### Out of Scope
 - Search (separate Elasticsearch service)
@@ -36,8 +36,9 @@ Design a system that generates and serves a personalized timeline of tweets for 
 |---|---|
 | DAU | 300M |
 | Tweets posted/day | 500M (~6,000/sec) |
-| Timeline reads/day | 150M (~1,750/sec avg, 10K/sec peak) |
-| Read:write ratio | ~300:1 |
+| Timeline loads/day | 6B (300M DAU × ~20 loads) → ~70K/sec avg, ~200K/sec peak |
+| Read:write ratio | ~12:1 on tweets (6B loads vs 500M posts) |
+| Fan-out writes/sec | ~6K posts/sec × ~200 avg followers ≈ 1.2M timeline-cache writes/sec |
 
 ### Storage Estimation
 | Metric | Value |
@@ -45,7 +46,7 @@ Design a system that generates and serves a personalized timeline of tweets for 
 | Avg tweet size | 300 bytes |
 | Tweets/day | 500M → 150 GB/day |
 | Tweets (5yr) | ~270 TB |
-| Media (images) | ~10× text → ~1.5 PB/5yr (on object store) |
+| Media (images) | ~10× text → ~2.7 PB/5yr (on object store) |
 
 ### Memory Estimation
 | Metric | Value |
@@ -58,7 +59,7 @@ Design a system that generates and serves a personalized timeline of tweets for 
 | Metric | Value |
 |---|---|
 | Write throughput | ~1.8 MB/s |
-| Read throughput (timeline, 20 tweets × 300B) | ~100 MB/s |
+| Read throughput (timeline, 20 tweets × 300B, 70K/sec) | ~420 MB/s avg |
 
 ---
 

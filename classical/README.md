@@ -19,3 +19,7 @@ Traditional distributed systems design.
 | [Rate Limiting](./patterns/rate-limiting/) | API gateways, abuse prevention |
 | [Caching](./patterns/caching/) | Feed, search, session |
 | [Consistent Hashing](./patterns/consistent-hashing/) | Distributed caches, sharding |
+
+---
+
+Guide: [How to solve classical system design problems](./HOW_TO_SOLVE.md)

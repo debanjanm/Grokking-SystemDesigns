@@ -133,7 +133,7 @@ You are a helpful customer support assistant for Acme Corp.
 
 def answer_question(user_question: str) -> str:
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5-5",
         max_tokens=1024,
         system=[
             {
@@ -155,18 +155,19 @@ def answer_question(user_question: str) -> str:
 
 ### Provider Cache — Multi-turn Conversation
 ```python
-# Cache the system prompt + conversation history up to a point
+# Put the cache breakpoint on the big static block; only the question changes
 messages = [
     {
         "role": "user",
         "content": [
-            {"type": "text", "text": long_document_to_analyze},
-            {"type": "text", "text": "cache_control", ...}  # cache document
-        ]
+            {
+                "type": "text",
+                "text": long_document_to_analyze,
+                "cache_control": {"type": "ephemeral"},  # prefix up to here is cached
+            },
+            {"type": "text", "text": "What are the key risks mentioned?"},
+        ],
     },
-    {"role": "assistant", "content": "I have read the document."},
-    # ↑ cache checkpoint here — everything above reused across questions
-    {"role": "user", "content": "What are the key risks mentioned?"},
 ]
 ```
 
@@ -175,7 +176,8 @@ Useful for: document Q&A sessions, code review (cache the codebase, ask many que
 ### Application-Level Semantic Cache
 ```python
 import hashlib
-import numpy as np
+import time
+import uuid
 from qdrant_client import QdrantClient
 
 class SemanticCache:
@@ -185,10 +187,12 @@ class SemanticCache:
         self._ensure_collection()
 
     def _ensure_collection(self):
-        self.qdrant.recreate_collection(
-            collection_name="prompt_cache",
-            vectors_config={"size": 1536, "distance": "Cosine"},
-        )
+        # create only if missing; recreate_collection would wipe the cache on every start
+        if not self.qdrant.collection_exists("prompt_cache"):
+            self.qdrant.create_collection(
+                collection_name="prompt_cache",
+                vectors_config={"size": 1536, "distance": "Cosine"},
+            )
 
     def _cache_key(self, model: str, system_prompt: str) -> str:
         return hashlib.sha256(f"{model}:{system_prompt}".encode()).hexdigest()[:16]
@@ -200,7 +204,10 @@ class SemanticCache:
         results = self.qdrant.search(
             collection_name="prompt_cache",
             query_vector=query_vector,
-            query_filter={"must": [{"key": "sp_hash", "match": {"value": sp_hash}}]},
+            query_filter={"must": [
+                {"key": "sp_hash", "match": {"value": sp_hash}},
+                {"key": "expires_at", "range": {"gt": time.time()}},   # enforce TTL
+            ]},
             limit=1,
             score_threshold=self.threshold,
         )
@@ -212,7 +219,8 @@ class SemanticCache:
     def set(self, query: str, response: str, model: str, system_prompt: str, ttl_sec: int = 3600):
         query_vector = embed(query)
         sp_hash = self._cache_key(model, system_prompt)
-        cache_id = hashlib.sha256(query.encode()).hexdigest()
+        # Qdrant ids must be uint or UUID; include sp_hash so different prompts don't collide
+        cache_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{sp_hash}:{query}"))
 
         self.qdrant.upsert(
             collection_name="prompt_cache",
@@ -247,7 +255,7 @@ def should_cache(request) -> bool:
 
 ### Cost Calculation with Caching
 ```
-Anthropic pricing (claude-sonnet-4-6, approx):
+Illustrative Anthropic pricing (Sonnet-class; check current pricing before relying on it):
   Input tokens:        $3.00 / 1M
   Cache write tokens:  $3.75 / 1M  (25% premium to write to cache)
   Cache read tokens:   $0.30 / 1M  (90% cheaper than input)
@@ -259,7 +267,7 @@ Without caching:
   2100 × 1000 × ($3.00/1M) = $6.30
 
 With caching (1 cache write, 999 cache reads):
-  Write: 2100 × $3.75/1M = $0.0079
+  Write: 2000 × $3.75/1M = $0.0075
   Reads: 2000 × 999 × $0.30/1M = $0.60
   User tokens: 100 × 1000 × $3.00/1M = $0.30
   Total: ~$0.91  ← 85% cost reduction
@@ -302,10 +310,10 @@ With caching (1 cache write, 999 cache reads):
 
 ---
 
-## Provider Cache Availability (2026)
+## Provider Cache Availability (snapshot; verify against current docs)
 | Provider | Cache type | Minimum prefix | Discount |
 |---|---|---|---|
 | Anthropic | Explicit checkpoint | 1024 tokens | 90% off cache reads |
 | OpenAI | Automatic prefix | 1024 tokens | 50% off cached tokens |
-| Google Gemini | Explicit (Context Caching) | 32K tokens | ~75% off |
+| Google Gemini | Explicit + implicit (varies by model) | Varies; check docs | Varies; check docs |
 | Self-hosted (vLLM) | Automatic prefix | Configurable | Latency only (no billing) |

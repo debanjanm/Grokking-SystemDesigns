@@ -172,7 +172,7 @@ Input validation, output filtering, PII scrubbing, content moderation.
 
 ---
 
-## Feedback Loop & Improvements *(GenAI-specific)*
+## Feedback Loop & Improvements *(ML / GenAI / ranked feeds; omit if not applicable)*
 - How user feedback is captured (thumbs up/down, corrections)
 - How feedback feeds back into system (prompt tuning, retrieval improvement, fine-tuning)
 - Eval cadence: automated regression on golden set per deploy

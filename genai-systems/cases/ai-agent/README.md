@@ -56,15 +56,15 @@ Design an LLM-powered agent that autonomously completes multi-step tasks using t
 ### Bandwidth Estimation
 | Metric | Value |
 |---|---|
-| LLM input tokens/day | ~500M |
-| LLM output tokens/day | ~200M |
+| LLM input tokens/day | ~3B (1M calls × 3,000) |
+| LLM output tokens/day | ~500M (1M calls × 500) |
 
 ### Cost Estimation
 | Metric | Value |
 |---|---|
 | LLM calls/day | 1M |
 | Avg tokens/call | 3,000 input + 500 output |
-| Estimated cost/day | ~$3,000–$8,000 |
+| Estimated cost/day | ~$5K (small-model mix) to ~$17K (large-model mix), before caching — illustrative list prices, verify |
 | Prompt caching savings (system prompt) | ~30% of input token cost |
 
 ---
@@ -133,7 +133,7 @@ Task Result → User (webhook / polling)
 - **Async task execution:** Agent tasks are long-running (seconds to minutes). Submit-and-poll pattern avoids holding HTTP connections.
 - **External memory:** In-context window alone insufficient for long tasks (50+ steps) or cross-session memory. Redis for short-term (fast, TTL-based); Vector DB for long-term (semantic retrieval).
 - **Safety gate:** Read-only tools auto-approved; write/delete/send require confirmation gate or policy check. Non-negotiable for production agents.
-- **Model Selection:** Claude Sonnet / GPT-4o for planning (strong reasoning, tool use). Haiku / GPT-4o-mini for short intermediate steps to reduce cost. Routing based on step complexity.
+- **Model Selection:** A large-tier model (e.g. Sonnet) for planning (strong reasoning, tool use). A small-tier model (e.g. Haiku) for short intermediate steps to reduce cost. Routing based on step complexity.
 
 ---
 

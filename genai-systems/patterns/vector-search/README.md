@@ -249,7 +249,7 @@ def get_embedding(text: str) -> list[float]:
 | Decision | Chose | Sacrificed |
 |---|---|---|
 | ANN over exact search | Speed (ms not seconds) | ~1–5% recall (closed by reranker) |
-| HNSW over IVF | Better recall, faster query | Higher memory (~4 GB per 1M 1536-dim vectors) |
+| HNSW over IVF | Better recall, faster query | Higher memory (~6 GB raw per 1M 1536-dim float32 vectors, plus ~10–30% graph overhead) |
 | Bi-encoder (separate query/doc encoding) | Fast: doc encoded offline | Less accurate than cross-encoder |
 | Cross-encoder reranker | High precision on top-K | Slow: can't use on full corpus |
 | Cosine over dot product | Magnitude-invariant | Dot product faster; fine if embeddings normalized |

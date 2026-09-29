@@ -19,3 +19,7 @@ Machine learning infrastructure and pipeline design.
 | [Feature Store](./patterns/feature-store/) | Shared features across models, point-in-time correctness |
 | [Model Serving](./patterns/model-serving/) | Online inference, shadow mode, canary deployments |
 | [Training Pipeline](./patterns/training-pipeline/) | Orchestration, data validation, experiment tracking |
+
+---
+
+Guide: [How to solve ML system design problems](./HOW_TO_SOLVE.md)

@@ -18,7 +18,7 @@ Design a Retrieval-Augmented Generation system that answers natural language que
 - Availability: 99.9% on query path; ingestion can tolerate delays
 - Consistency: new documents searchable within 5 minutes of upload
 - Security & Privacy: access control per document (tenant/role-based); PII not logged raw
-- Scalability: 10M+ document chunks; 1,000 QPS
+- Scalability: ~27M document chunks; ~100 QPS peak (design headroom)
 
 ### Out of Scope
 - User authentication (handled upstream)
@@ -35,17 +35,17 @@ Design a Retrieval-Augmented Generation system that answers natural language que
 |---|---|
 | DAU | 50,000 |
 | Queries/day | 500,000 |
-| Queries/sec (peak) | ~1,000 |
+| Queries/sec (peak) | ~60 (500K/day, ~10× peak factor); design for 100 |
 | Ingestion events/day | 10,000 docs |
 
 ### Storage Estimation
 | Metric | Value |
 |---|---|
 | Avg doc size | 50 KB |
-| Chunks per doc (512 tokens, 50% overlap) | ~50 chunks |
-| Total chunks (1M docs) | ~50M chunks |
+| Chunks per doc (50 KB ≈ 12.5K tokens; 512-token chunks, 50-token overlap) | ~27 chunks |
+| Total chunks (1M docs) | ~27M chunks |
 | Embedding size (1536-dim float32) | 6 KB/chunk |
-| Vector index total | ~300 GB |
+| Vector index total | ~160 GB (27M × 6 KB) |
 | Raw doc storage (5yr) | ~5 TB |
 
 ### Memory Estimation
@@ -63,10 +63,10 @@ Design a Retrieval-Augmented Generation system that answers natural language que
 ### Cost Estimation
 | Metric | Value |
 |---|---|
-| Embeddings at ingest (50M chunks) | ~$10,000 one-time |
-| Query embeddings/day (1,000 QPS) | ~500M tokens/day |
-| LLM generation/day | ~500M tokens/day |
-| Total cost/day (est.) | ~$2,000–$5,000 |
+| Embeddings at ingest (27M chunks × ~512 tokens ≈ 14B tokens) | ~$300 (small model) to ~$1,800 (large model), one-time |
+| Query embeddings/day (500K × ~20 tokens) | ~10M tokens/day (negligible) |
+| LLM generation/day (500K × ~4K in + ~300 out) | ~2B in + ~150M out |
+| Total cost/day (est.) | ~$3K (small-model mix) to ~$8K (large-model mix) — illustrative list prices, verify |
 
 ---
 
@@ -139,7 +139,7 @@ Query Service
 ### Key Design Decisions
 - **Hybrid search (BM25 + vector):** Pure vector search misses exact keyword matches (product codes, names). BM25 + vector fused with RRF handles both semantic and lexical retrieval.
 - **Reranker stage:** ANN search optimizes for recall; cross-encoder reranker optimizes for precision. Two-stage avoids precision/recall tradeoff in one step.
-- **Chunk overlap:** 50-token overlap prevents context loss at boundaries. Tradeoff: 1.5× chunk count.
+- **Chunk overlap:** 50-token overlap prevents context loss at boundaries. Tradeoff: ~1.1× chunk count (50 of every 512 tokens repeated).
 - **Event-driven ingestion:** Decouples upload from processing. Ingestion spikes don't affect query latency.
 - **Model Selection:** `text-embedding-3-large` (OpenAI) for quality; `text-embedding-3-small` for cost-sensitive deployments. Reranker: Cohere Rerank or local cross-encoder (BGE).
 
@@ -233,13 +233,14 @@ Query
 
 ### Algorithms & Strategies
 - **Chunking strategy:** Recursive split → 512 tokens → 50-token overlap. Semantic chunking for legal/financial docs.
-- **Embedding model:** `text-embedding-3-large` (1536-dim) for quality; batch at ingest (up to 2048 chunks/call). Cache query embeddings in Redis (TTL: 1hr) — same queries reuse embedding.
+- **Embedding model:** `text-embedding-3-large` truncated to 1536 dims via the `dimensions` param (native is 3072) for quality; batch at ingest (up to 2048 chunks/call). Cache query embeddings in Redis (TTL: 1hr) — same queries reuse embedding.
 - **ANN indexing:** HNSW in Qdrant. `ef_construction=200, m=16` for quality-speed balance. Full index loaded in memory for latency.
 - **Reranking:** Cohere Rerank API or local `bge-reranker-large`. Input: (query, chunk_text) pairs. Output: relevance score → sort → keep top-5.
 - **Context assembly:** Sort top-5 chunks by page/section order (not relevance score) for coherent reading. Include chunk source metadata for citations. Fit within context window (8K tokens).
 - **Prompt design:** System prompt includes grounding instruction: "Answer ONLY using the provided context. If context is insufficient, say so." Context inserted between `<context>` tags.
 
 ### Security Design
+- Rate limiting: per-tenant token bucket on `/query` and `/ingest` (see [Rate Limiting](../../../classical/patterns/rate-limiting/)); protects embedding/LLM spend
 - AuthN/AuthZ: API key → tenant_id resolution; all vector queries scoped to tenant_id
 - Document access: role-based filter in metadata (doc.allowed_roles); checked at context assembly
 - Encryption at rest: S3 (SSE-S3), PostgreSQL (pg_crypto), Vector DB (at-rest encryption)
@@ -288,7 +289,7 @@ Query
 | ANN over exact NN | ms-latency retrieval | ~2% recall loss (mitigated by reranker) |
 | Reranker stage | Precision | Extra 200ms latency |
 | Hybrid search (BM25 + vector) | Handles keyword + semantic | Two retrieval systems to maintain |
-| Chunk overlap | Boundary coverage | 1.5× storage and embed cost |
+| Chunk overlap | Boundary coverage | ~1.1× storage and embed cost |
 | Event-driven ingestion | Decoupled, scalable | Eventual consistency (5min lag) |
 | Separate vector + metadata store | Query flexibility | Sync complexity on updates/deletes |
 

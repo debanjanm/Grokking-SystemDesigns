@@ -271,7 +271,7 @@ Rules stored as config (JSON DSL), hot-reloadable via config service.
 
 ### Algorithms & Strategies
 - **Model:** XGBoost (100 trees, max_depth=6). Trained on 90d of labeled transactions. Labels: chargeback = fraud, no chargeback within 90d = legitimate (noisy label — some fraud not disputed).
-- **Class imbalance:** 0.1% fraud rate. Strategies: SMOTE oversampling on minority class during training; `scale_pos_weight=999` in XGBoost; optimize for AUC-PR not AUC-ROC (better for imbalanced).
+- **Class imbalance:** 0.1% fraud rate. Strategies: class weighting (`scale_pos_weight≈999` in XGBoost) as the default; resampling (SMOTE, undersampling) as an alternative, not on top of weights (that double-corrects), and SMOTE can create unrealistic points on velocity/count features; optimize for AUC-PR not AUC-ROC (better for imbalanced).
 - **Threshold tuning:** Operating point set to maximize F-beta (beta=0.5, precision-weighted) — cost of false positive (blocking legitimate) ~= 5× cost of false negative for low-value transactions. Separate thresholds per transaction amount tier.
 - **Concept drift detection:** Monitor feature distribution (KL divergence) weekly. If drift detected → trigger retraining. Model retrained weekly; fast retrain (2hr on Spark) triggered on drift.
 - **Account Takeover (ATO):** Separate model trained on login events: failed login rate, impossible travel on login, new device after password reset. Same scoring infrastructure, separate feature set.
@@ -357,7 +357,7 @@ Rules stored as config (JSON DSL), hot-reloadable via config service.
 ## Interview Tips
 
 ### What Interviewers Expect
-- Class imbalance is the first ML question — have SMOTE + scale_pos_weight + AUC-PR answer ready
+- Class imbalance is the first ML question — have class weights vs resampling (pick one) + AUC-PR answer ready
 - Latency constraint is the system design crux — explain why Redis, why async updates, why GBM not neural net
 - Explainability for regulatory compliance — SHAP values, reason codes
 - Concept drift — fraud patterns change weekly; model needs frequent retraining

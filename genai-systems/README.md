@@ -19,3 +19,7 @@ LLM-native architecture design.
 | [Prompt Caching](./patterns/prompt-caching/) | Cost reduction for repeated system prompts |
 | [Vector Search](./patterns/vector-search/) | Semantic retrieval in RAG, memory systems |
 | [Evaluation](./patterns/evaluation/) | LLM-as-judge, regression testing, golden sets |
+
+---
+
+Guide: [How to solve GenAI system design problems](./HOW_TO_SOLVE.md)

@@ -191,7 +191,7 @@ Ask yourself these in order:
    Proxy labels? (use until ground truth arrives)
 
 3. Class imbalance?
-   Fraud (0.1%) → SMOTE, scale_pos_weight, optimize AUC-PR not AUC-ROC
+   Fraud (0.1%) → class weights (scale_pos_weight) OR resampling, not both; optimize AUC-PR not AUC-ROC
 
 4. Feature engineering reproducible?
    Same Spark job used for training and feature store population?
@@ -328,4 +328,4 @@ Fix: Inverse Propensity Scoring (IPS)
 - Worse over time → concept drift: monitor KL divergence on features; drift-triggered retrain
 - Features in 100ms → Redis Feature Store; pre-computed batch features
 - Offline vs online gap → shadow mode A/B; log features at serving time for retraining
-- Class imbalance → SMOTE + scale_pos_weight; optimize AUC-PR not AUC-ROC
+- Class imbalance → class weights (or resampling, not both); optimize AUC-PR not AUC-ROC
