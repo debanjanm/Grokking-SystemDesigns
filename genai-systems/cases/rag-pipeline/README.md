@@ -237,7 +237,7 @@ Query
 - **ANN indexing:** HNSW in Qdrant. `ef_construction=200, m=16` for quality-speed balance. Full index loaded in memory for latency.
 - **Reranking:** Cohere Rerank API or local `bge-reranker-large`. Input: (query, chunk_text) pairs. Output: relevance score → sort → keep top-5.
 - **Context assembly:** Sort top-5 chunks by page/section order (not relevance score) for coherent reading. Include chunk source metadata for citations. Fit within context window (8K tokens).
-- **Prompt design:** System prompt includes grounding instruction: "Answer ONLY using the provided context. If context is insufficient, say so." Context inserted between `<context>` tags.
+- **Prompt design:** System prompt includes grounding instruction: "Answer ONLY using the provided context. If context is insufficient, say so." Context inserted between `<context>` tags. Order the prompt static-first (system prompt, instructions), then retrieved chunks, so the provider's prompt cache covers the static prefix; chunks change per query and cannot be cached.
 
 ### Security Design
 - Rate limiting: per-tenant token bucket on `/query` and `/ingest` (see [Rate Limiting](../../../classical/patterns/rate-limiting/)); protects embedding/LLM spend
@@ -314,6 +314,14 @@ Query
 - Retrieval improvement: add failing queries to eval set; tune similarity threshold or chunking strategy
 - Eval cadence: run RAGAs (retrieval recall, context precision, answer faithfulness) on golden set per deploy
 - Long-term: use feedback to fine-tune reranker on domain-specific relevance
+
+---
+
+## Patterns Used
+- [LLM Evaluation](../../patterns/evaluation/) — retrieval recall, context precision, answer faithfulness (RAGAs)
+- [Prompt Caching](../../patterns/prompt-caching/) — provider cache on the static system prompt and instructions; retrieved chunks vary per query, so they sit after the cache breakpoint
+- [Rate Limiting](../../../classical/patterns/rate-limiting/) — per-tenant query rate limit
+- [Vector Search](../../patterns/vector-search/) — core retrieval: chunk embeddings → ANN search → reranker → LLM context
 
 ---
 

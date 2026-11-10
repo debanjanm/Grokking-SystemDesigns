@@ -97,19 +97,26 @@ user_stats = FeatureView(
 
 ### Point-in-Time Join
 ```sql
--- Training dataset: join features at label event time
-SELECT
-    label.user_id,
-    label.event_time,
-    label.label,
-    feat.txn_count_7d,
-    feat.avg_amount_30d
-FROM labels
-ASOF JOIN feature_history feat
-  ON labels.user_id = feat.user_id
-  AND feat.timestamp <= labels.event_time   -- ← point-in-time
-ORDER BY feat.timestamp DESC
-LIMIT 1
+-- labels(label_id, user_id, event_time, label)
+-- feature_history(user_id, timestamp, txn_count_7d, avg_amount_30d)
+
+-- Engines with ASOF JOIN (DuckDB shown; ClickHouse/Snowflake syntax differs):
+-- per label row, takes the latest feature row at or before event_time.
+SELECT l.label_id, l.user_id, l.event_time, l.label, f.txn_count_7d, f.avg_amount_30d
+FROM labels l
+ASOF LEFT JOIN feature_history f
+  ON l.user_id = f.user_id AND l.event_time >= f.timestamp;
+
+-- Portable version (any SQL engine with window functions):
+SELECT label_id, user_id, event_time, label, txn_count_7d, avg_amount_30d
+FROM (
+  SELECT l.*, f.txn_count_7d, f.avg_amount_30d,
+         ROW_NUMBER() OVER (PARTITION BY l.label_id ORDER BY f.timestamp DESC) AS rn
+  FROM labels l
+  LEFT JOIN feature_history f
+    ON f.user_id = l.user_id AND f.timestamp <= l.event_time   -- point-in-time
+) t
+WHERE rn = 1;
 ```
 
 ### Online Serving — Redis Schema

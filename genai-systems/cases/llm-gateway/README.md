@@ -233,7 +233,7 @@ Each provider (OpenAI, Anthropic, Gemini) implements this interface. Gateway nev
 - **Token pre-estimation:** Use tiktoken (OpenAI) or model-specific tokenizer to estimate input tokens before call — needed for token-level rate check. Actual count reconciled after response.
 - **Circuit breaker per provider:** Open after 5 consecutive 5xx in 10s window → route to backup → half-open after 30s.
 - **Caching strategy:** Semantic cache with cosine threshold 0.95. Cache key includes `system_prompt_hash` to prevent cross-context hits. TTL: 1 hour default, configurable.
-- **Cost calculation:** `cost = (input_tokens × input_price) + (output_tokens × output_price)`. Price table stored in config (Redis), not DB — update without deploy.
+- **Cost calculation:** `cost = (input_tokens × input_price) + (output_tokens × output_price)`. Price table stored in config (Redis), not DB — update without deploy. Provider prompt-cache tokens are priced differently (cache reads ≈ 10% of input price, cache writes at a premium), so the adapter returns `cache_read_tokens` and `cache_write_tokens` separately and the ledger bills them at their own rates.
 
 ### Security Design
 - AuthN: HMAC-SHA256 API key validation (compare key_hash, never store raw key)
@@ -307,6 +307,15 @@ Each provider (OpenAI, Anthropic, Gemini) implements this interface. Gateway nev
 - Tune similarity threshold per tenant based on observed hit quality
 - A/B routing experiments: compare model outputs on same query → quality metrics → update default routing
 - Cost anomaly detection: alert on 3x spike vs 7-day rolling average per tenant
+
+---
+
+## Patterns Used
+- [Caching](../../../classical/patterns/caching/) — semantic response cache (vector similarity)
+- [LLM Evaluation](../../patterns/evaluation/) — cache correctness, response quality regression per model version
+- [Prompt Caching](../../patterns/prompt-caching/) — gateway passes provider cache markers through and bills cached-read/write tokens separately, alongside its own semantic cache
+- [Rate Limiting](../../../classical/patterns/rate-limiting/) — token bucket per tenant (request + token level)
+- [Vector Search](../../patterns/vector-search/) — semantic response cache: query embedding → similar past queries → cached response
 
 ---
 

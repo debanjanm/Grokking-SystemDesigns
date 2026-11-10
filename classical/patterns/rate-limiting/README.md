@@ -171,8 +171,9 @@ L4: DB connection pool → implicit rate limiting via queue depth
 local key      = KEYS[1]
 local capacity = tonumber(ARGV[1])
 local refill   = tonumber(ARGV[2])   -- tokens per second
-local now      = tonumber(ARGV[3])   -- current timestamp (ms)
-local cost     = tonumber(ARGV[4])   -- tokens this request costs
+local cost     = tonumber(ARGV[3])   -- tokens this request costs
+local t        = redis.call("TIME")  -- server clock; client clocks drift
+local now      = t[1] * 1000 + math.floor(t[2] / 1000)   -- ms
 
 local bucket = redis.call("HMGET", key, "tokens", "last_refill")
 local tokens     = tonumber(bucket[1]) or capacity
@@ -195,27 +196,30 @@ end
 
 Lua script is atomic in Redis — no race condition between check and update.
 
-### Sliding Window Counter in Redis
+### Sliding Window Log in Redis (Lua, atomic)
 ```python
+SLIDING_WINDOW = redis.register_script("""
+local t   = redis.call("TIME")
+local now = t[1] * 1000 + math.floor(t[2] / 1000)           -- server clock, ms
+redis.call("ZREMRANGEBYSCORE", KEYS[1], 0, now - tonumber(ARGV[1]))
+if redis.call("ZCARD", KEYS[1]) < tonumber(ARGV[2]) then
+    redis.call("ZADD", KEYS[1], now, ARGV[3])                -- only ALLOWED requests are recorded
+    redis.call("PEXPIRE", KEYS[1], ARGV[1])
+    return 1
+end
+return 0
+""")
+
 def is_allowed(user_id: str, limit: int, window_sec: int) -> bool:
-    now = time.time()
-    window_start = now - window_sec
-
-    pipe = redis.pipeline()
-    key = f"rl:{user_id}"
-
-    # Remove old entries outside window
-    pipe.zremrangebyscore(key, 0, window_start)
-    # Count entries in window
-    pipe.zcard(key)
-    # Add current request
-    pipe.zadd(key, {str(now): now})
-    # Set TTL
-    pipe.expire(key, window_sec)
-
-    _, count, _, _ = pipe.execute()
-    return count < limit
+    return SLIDING_WINDOW(keys=[f"rl:{user_id}"],
+                          args=[window_sec * 1000, limit, uuid.uuid4().hex]) == 1
 ```
+
+- Check and add happen in one script, so two concurrent requests can't both take the last slot.
+- Rejected requests are not recorded, so a client that retries while blocked gets back in as soon as old entries age out.
+- Unique member (`uuid4`) avoids two requests in the same millisecond overwriting each other.
+- On Redis < 7, call `redis.replicate_commands()` at the top of the script before using `TIME`.
+- This is the exact (log) variant: O(limit) memory per client. For O(1) memory use the sliding window counter described above.
 
 ### Rate Limit Headers
 ```python
@@ -276,7 +280,7 @@ def get_limits(tenant_id):
 - [LLM Gateway](../../../genai-systems/cases/llm-gateway/) — token bucket per tenant (request + token level)
 - [RAG Pipeline](../../../genai-systems/cases/rag-pipeline/) — per-tenant query rate limit
 - [Twitter Feed](../../cases/twitter-feed/) — tweet posting limit; API rate limit for 3rd party clients
-- [Uber](../../cases/uber/) — surge pricing request limiting; driver location update throttle
+- [Uber](../../cases/uber/) — per-rider ride-request cap; per-driver location-update throttle
 
 ---
 

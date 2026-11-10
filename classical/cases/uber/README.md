@@ -390,6 +390,13 @@ Transitions (with optimistic locking):
 
 ---
 
+## Patterns Used
+- [Caching](../../patterns/caching/) — driver location cache, surge pricing cache, ETA cache
+- [Consistent Hashing](../../patterns/consistent-hashing/) — Redis Cluster slot hashing spreads the driver-location index; one regional cluster per city
+- [Rate Limiting](../../patterns/rate-limiting/) — per-rider ride-request cap; per-driver location-update throttle
+
+---
+
 ## Interview Tips
 
 ### What Interviewers Expect

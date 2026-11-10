@@ -362,6 +362,13 @@ if step_count > 0.8 * max_steps → inject "you are running out of steps, aim to
 
 ---
 
+## Patterns Used
+- [LLM Evaluation](../../patterns/evaluation/) — task completion rate, step efficiency, safety violation rate
+- [Prompt Caching](../../patterns/prompt-caching/) — provider cache for system prompt + tool definitions (large static prefix)
+- [Vector Search](../../patterns/vector-search/) — long-term memory retrieval: goal embedding → similar past tasks/preferences
+
+---
+
 ## Interview Tips
 
 ### What Interviewers Expect

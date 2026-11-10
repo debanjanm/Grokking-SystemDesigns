@@ -179,6 +179,11 @@ Input validation, output filtering, PII scrubbing, content moderation.
 
 ---
 
+## Patterns Used
+- Pattern name → `../../patterns/<name>/` — where and why it is applied (link only patterns the design really uses)
+
+---
+
 ## Interview Tips
 
 ### What Interviewers Expect

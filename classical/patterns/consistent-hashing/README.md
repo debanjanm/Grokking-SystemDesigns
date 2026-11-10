@@ -240,9 +240,9 @@ Solutions:
 
 ## Used In
 - [URL Shortener](../../cases/url-shortener/) — Redis Cluster uses consistent hashing for cache sharding
-- [Twitter Feed](../../cases/twitter-feed/) — Cassandra uses token ring for tweet/timeline data sharding
-- [Uber](../../cases/uber/) — distributed session store sharding; geo-partition routing
-- [Recommendation Engine](../../../ml-systems/cases/recommendation-engine/) — feature store Redis Cluster sharding
+- [Twitter Feed](../../cases/twitter-feed/) — Cassandra token ring shards tweet and follow data by partition key
+- [Uber](../../cases/uber/) — Redis Cluster slot hashing spreads the driver-location index; one regional cluster per city
+- [Recommendation Engine](../../../ml-systems/cases/recommendation-engine/) — Redis Cluster slot hashing shards the online feature store
 
 ---
 

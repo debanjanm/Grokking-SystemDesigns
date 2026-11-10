@@ -120,11 +120,11 @@ Answer:
 {answer}
 
 Score the answer on FAITHFULNESS (does it only use information from the context?):
-- 1: Completely faithful — no information beyond context
-- 2: Mostly faithful — minor inference
+- 5: Completely faithful — no information beyond context
+- 4: Mostly faithful — minor inference
 - 3: Somewhat unfaithful — adds information not in context
-- 4: Mostly unfaithful — significant hallucination
-- 5: Completely unfaithful — contradicts or ignores context
+- 2: Mostly unfaithful — significant hallucination
+- 1: Completely unfaithful — contradicts or ignores context
 
 Respond in JSON: {"score": <1-5>, "reasoning": "<one sentence>"}
 """
@@ -138,11 +138,12 @@ def eval_faithfulness(context: str, question: str, answer: str) -> dict:
         response_format={"type": "json_object"},
     )
     return json.loads(response.content)
-    # → {"score": 2, "reasoning": "Answer correctly uses context but adds minor inference"}
+    # → {"score": 4, "reasoning": "Answer correctly uses context but adds minor inference"}
 ```
 
 ### LLM-as-Judge (Multi-Axis)
 ```python
+# Every axis uses the same 1-5 scale: 5 = best, so higher is always better.
 AXES = {
     "faithfulness":  "Does the answer only use information from the provided context?",
     "completeness":  "Does the answer address all parts of the question?",
@@ -157,7 +158,7 @@ def eval_multi_axis(context, question, answer) -> dict[str, float]:
         result = eval_axis(context, question, answer, criteria)
         scores[axis] = result["score"]
     return scores
-    # → {"faithfulness": 1.2, "completeness": 2.1, "conciseness": 1.5, ...}
+    # → {"faithfulness": 4.6, "completeness": 3.9, "conciseness": 4.2, ...}
 ```
 
 ### RAG-Specific Metrics (RAGAs)
@@ -218,6 +219,7 @@ def eval_agent_task(task: str, expected_outcome: str, agent_trace: list) -> dict
 ### Regression Detection
 ```python
 def check_regression(baseline_scores: dict, new_scores: dict, thresholds: dict) -> list[str]:
+    # Scores must be normalized to 0-1, higher = better (judge score s on 1-5 -> (s - 1) / 4).
     regressions = []
     for metric, new_val in new_scores.items():
         baseline = baseline_scores[metric]

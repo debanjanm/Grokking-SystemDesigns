@@ -304,8 +304,8 @@ With caching (1 cache write, 999 cache reads):
 ---
 
 ## Used In
-- [LLM Gateway](../../cases/llm-gateway/) — semantic response cache (vector similarity, cosine > 0.95)
-- [RAG Pipeline](../../cases/rag-pipeline/) — provider cache for system prompt + retrieved context prefix
+- [LLM Gateway](../../cases/llm-gateway/) — gateway passes provider cache markers through and bills cached-read/write tokens separately, alongside its own semantic cache
+- [RAG Pipeline](../../cases/rag-pipeline/) — provider cache on the static system prompt and instructions; retrieved chunks vary per query, so they sit after the cache breakpoint
 - [AI Agent](../../cases/ai-agent/) — provider cache for system prompt + tool definitions (large static prefix)
 
 ---

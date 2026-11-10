@@ -56,7 +56,7 @@ Runnable-looking snippets, key configuration values, schemas. Code must be corre
 
 Only link cases that actually apply the pattern, and make sure the case mentions it back.
 
-- `[Case name](../../cases/case-name/)` — how it uses the pattern
+- Case name → `../../cases/<name>/` — how it uses the pattern
 
 ---
 

@@ -271,6 +271,13 @@ On redirect:
 
 ---
 
+## Patterns Used
+- [Caching](../../patterns/caching/) — Redis cache for short_code → long_url; 10:1 read:write ratio
+- [Consistent Hashing](../../patterns/consistent-hashing/) — Redis Cluster uses consistent hashing for cache sharding
+- [Rate Limiting](../../patterns/rate-limiting/) — 100 URL creations/hr per IP; anti-spam
+
+---
+
 ## Interview Tips
 
 ### What Interviewers Expect

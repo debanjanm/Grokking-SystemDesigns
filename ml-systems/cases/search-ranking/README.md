@@ -384,6 +384,14 @@ Personalized: user's recent search history boosts matching suggestions.
 
 ---
 
+## Patterns Used
+- [Caching](../../../classical/patterns/caching/) — popular query result cache (Redis, TTL 5min)
+- [Feature Store](../../patterns/feature-store/) — user query affinity, click history, category preferences
+- [Model Serving](../../patterns/model-serving/) — L2 LTR model serving per query, shadow testing new ranking models
+- [Training Pipeline](../../patterns/training-pipeline/) — weekly LTR retraining on click logs; IPS position bias correction in training
+
+---
+
 ## Interview Tips
 
 ### What Interviewers Expect

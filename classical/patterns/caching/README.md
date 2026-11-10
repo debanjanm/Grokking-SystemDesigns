@@ -136,11 +136,13 @@ Solutions:
      else:
        wait 50ms → retry cache lookup
 
-2. Probabilistic early refresh:
-   remaining_ttl = TTL(key)
-   if random() < exp(-beta × remaining_ttl):
+2. Probabilistic early refresh (XFetch):
+   # delta = how long a recompute takes; beta ~ 1.0 (higher = refresh earlier)
+   expiry = now + TTL(key)
+   if now - delta * beta * log(random()) >= expiry:
      refresh cache now (before expiry)
-   # Starts refreshing slightly before TTL — avoids hard expiry storm
+   # log(random()) < 0, so the check fires early; likelier as expiry nears and for slow recomputes.
+   # Usually one caller wins before the key expires, so there is no stampede.
 
 3. Background refresh:
    Async job refreshes cache before TTL expires

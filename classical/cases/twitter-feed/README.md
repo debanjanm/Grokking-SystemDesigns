@@ -51,8 +51,8 @@ Design a system that generates and serves a personalized timeline of tweets for 
 ### Memory Estimation
 | Metric | Value |
 |---|---|
-| Timeline cache per user (800 tweet IDs × 8B) | ~6 KB |
-| Cache for 30M active users | ~180 GB |
+| Timeline cache per user (800 tweet IDs × 8B) | ~6.4 KB |
+| Cache for all 300M DAU | ~1.9 TB (sharded Redis cluster); users inactive 7+ days drop out |
 | Hot tweet cache | ~10 GB |
 
 ### Bandwidth Estimation
@@ -112,7 +112,7 @@ User → Timeline Service
 3. Event published to Kafka: `{ tweet_id, author_id, timestamp }`
 4. Fan-out Service consumes event:
    - Fetch author's follower list (up to 75K followers → batch)
-   - For each follower: `LPUSH timeline:{follower_id} tweet_id` + `LTRIM` to 800
+   - For each follower: `LPUSHX timeline:{follower_id} tweet_id` (only if that user's timeline is cached) + `LTRIM` to 800
 5. Notification Service sends push notification to mentioned users
 
 **Load timeline:**
@@ -160,7 +160,7 @@ timeline_cache (Redis):
   key:   "timeline:{user_id}"
   type:  List (tweet_ids, newest first)
   max:   800 entries (LTRIM on every LPUSH)
-  TTL:   7 days (inactive users not cached)
+  TTL:   7 days, refreshed on read (inactive users drop out; rebuilt on next load)
 
 tweet_cache (Redis):
   key:   "tweet:{tweet_id}"
@@ -203,7 +203,7 @@ On tweet.created event:
     for batch in chunks(followers, 100):
       pipeline = redis.pipeline()
       for follower_id in batch:
-        pipeline.lpush(f"timeline:{follower_id}", tweet_id)
+        pipeline.lpushx(f"timeline:{follower_id}", tweet_id)   # skip users with no cached timeline
         pipeline.ltrim(f"timeline:{follower_id}", 0, 799)
       pipeline.execute()
 
@@ -238,6 +238,20 @@ Server:
   idx = redis.lpos("timeline:{user_id}", cursor)
   tweet_ids = redis.lrange("timeline:{user_id}", idx+1, idx+20)
 ```
+
+#### Timeline Rebuild on Cache Miss
+New, returning or evicted users have no cached timeline, and fan-out skips them (`LPUSHX`), so the read path rebuilds:
+```
+def rebuild_timeline(user_id):
+    following = get_following(user_id)                     # cap at ~1000 accounts
+    ids = []
+    for batch in chunks(following, 100):
+        ids += cassandra.recent_tweet_ids(batch, limit=50) # per-author partition, newest first
+    ids = sorted(ids, reverse=True)[:800]                  # Snowflake ids sort by time
+    redis.rpush(f"timeline:{user_id}", *ids); redis.expire(f"timeline:{user_id}", 7 * 86400)
+    return ids
+```
+Pay the fan-out-on-read cost once per user per absence, instead of fan-out-on-write for every inactive follower on every tweet. A per-user lock prevents a rebuild stampede.
 
 #### Like Counter
 ```
@@ -324,7 +338,7 @@ Solution: Redis INCR counter + async flush
 | Failure | Cause | Fix |
 |---|---|---|
 | Fan-out lag spike | Viral tweet from large account | Auto-scale Kafka consumers; rate-limit fan-out per tweet |
-| Timeline cache cold | Redis restart | Pre-warm from Cassandra for active users on startup |
+| Timeline cache cold | Redis restart | Rebuild on miss (above); pre-warm the most active users on startup |
 | Celebrity tweets missing | Fan-out-on-read merge fails | Fallback: include celebrity tweets even if merge service down (degrade gracefully) |
 | Like counter lost | Redis crash before flush | Redis AOF persistence; reconcile from Kafka event log |
 | Follower list too large | User with 100M followers | Paginate follower fetch; fan-out uses multiple Kafka partitions |
@@ -335,6 +349,13 @@ Solution: Redis INCR counter + async flush
 - Ranked timeline: collect dwell time, likes, retweets → LTR model ranks top 100 cached tweets → return top 20
 - A/B: reverse-chronological vs ranked — measure engagement rate
 - Notification tuning: ML model scores notification worth sending → reduces notification fatigue
+
+---
+
+## Patterns Used
+- [Caching](../../patterns/caching/) — timeline cache, tweet cache, user profile cache
+- [Consistent Hashing](../../patterns/consistent-hashing/) — Cassandra token ring shards tweet and follow data by partition key
+- [Rate Limiting](../../patterns/rate-limiting/) — tweet posting limit; API rate limit for 3rd party clients
 
 ---
 

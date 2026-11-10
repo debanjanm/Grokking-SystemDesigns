@@ -354,6 +354,13 @@ Rules stored as config (JSON DSL), hot-reloadable via config service.
 
 ---
 
+## Patterns Used
+- [Feature Store](../../patterns/feature-store/) — velocity counters, device history, merchant risk scores
+- [Model Serving](../../patterns/model-serving/) — online GBM scoring, < 100ms SLA, canary rollout
+- [Training Pipeline](../../patterns/training-pipeline/) — weekly GBM retraining; drift-triggered fast retrain; label delay handled with proxy labels
+
+---
+
 ## Interview Tips
 
 ### What Interviewers Expect

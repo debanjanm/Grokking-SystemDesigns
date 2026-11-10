@@ -329,6 +329,16 @@ Training: in-batch negative sampling. Loss: softmax cross-entropy over batch.
 
 ---
 
+## Patterns Used
+- [Caching](../../../classical/patterns/caching/) — pre-computed candidate cache + Redis feature cache
+- [Consistent Hashing](../../../classical/patterns/consistent-hashing/) — Redis Cluster slot hashing shards the online feature store
+- [Feature Store](../../patterns/feature-store/) — user preferences, viewing history aggregations
+- [Model Serving](../../patterns/model-serving/) — online ranker serving (LightGBM), batch pre-compute of candidate sets
+- [Training Pipeline](../../patterns/training-pipeline/) — weekly two-tower retraining on interaction logs; daily feature refresh
+- [Vector Search](../../../genai-systems/patterns/vector-search/) — item/user embeddings → ANN for candidate generation
+
+---
+
 ## Interview Tips
 
 ### What Interviewers Expect
